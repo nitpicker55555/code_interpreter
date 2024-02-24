@@ -1,4 +1,5 @@
 # -*- coding: utf-8 -*-
+import asyncio
 import json
 import re
 
@@ -9,6 +10,9 @@ from openai import OpenAI
 import os
 from dotenv import load_dotenv
 import ast
+from langchain.tools import DuckDuckGoSearchResults
+
+
 load_dotenv()
 api_key = os.getenv('OPENAI_API_KEY')
 client = OpenAI()
@@ -26,27 +30,11 @@ app.secret_key = 'secret_key' # 用于启用 flash() 方法发送消息
 # ![示例图片](/static/data.png "这是一个示例图片")
 import inspect
 
-
-
+search = DuckDuckGoSearchResults()
 markdown_text = """
 asdasd
 ```python
-import pandas as pd
-
-# Load the CSV file into a pandas DataFrame
-file_path = './uploads/risk.csv'
-data = pd.read_csv(file_path)
-import matplotlib.pyplot as plt
-matplotlib.use('agg')
-# Selecting columns for the bar chart
-columns = ['y1', 'y2', 'y3', 'y4']
-
-# Creating a bar chart
-plt.bar(columns, data[columns].mean())  # Using mean value for each column
-plt.xlabel('Columns')
-plt.ylabel('Mean Value')
-plt.title('Mean Value of Selected Columns')
-plt.show()
+search_internet("中国新闻")
 ```
 """
 
@@ -71,15 +59,13 @@ plt.show()
 # If you want to get the value of a variable, please use print() to print it out.
 # """
 normal_prompt = r"""
-You have a virtual environment equipped with a python environment. You can freely achieve your goals through python 
-code. You can use python code to process user upload files, or use matplotlib to draw charts. 
+You have a virtual environment equipped with a python environment and a function to access internet. You can freely achieve your goals through python 
+code. You can use python code to process user upload files, or use matplotlib to draw charts, and use 'search_internet("news")' to access internet. 
 The variables in the code you give will be stored in the environment and can be called directly next 
 time.
 
-Process upload file:
-User can upload file in location: .\uploads\
-You can use python code to read and process it.
-"""
+Access internet: You can access internet to search information by calling function search_internet("news"), Example: you 
+can run search_internet("China news") to get news in China. """
 
 judge_prompt="""You are a task completion judge. I will tell you the goal and current completion status of this task. 
 You need to output whether it is completed now in json format. If it is completed, output {"complete":true}. If not, 
@@ -106,7 +92,16 @@ def chat_single(messages, mode="json"):
         max_tokens=4096
         )
         return response
+def search_internet(news):
+    loop = asyncio.new_event_loop()
+    asyncio.set_event_loop(loop)
 
+    async def async_task():
+        # 你的异步代码
+        print(search.run(news))
+
+    loop.run_until_complete(async_task())
+    loop.close()
 def complete_json(input_stream):
     """
     尝试补全一个不完整的JSON字符串，包括双引号和括号。
@@ -241,7 +236,8 @@ def request_entity_too_large(error):
 @app.route('/')
 def home():
     # 加载包含 Markdown 容器的前端页面
-    session['globals_dict'] = {}
+    # session['globals_dict'] ={}
+    # session['locals_dict'] = locals()
 
     session['uploaded_indication'] = None
     session['messages2'] = []
@@ -267,6 +263,7 @@ def submit():
 
 
 
+
         compelete = False
         steps=0
         whole_step=0
@@ -282,8 +279,8 @@ def submit():
                 data+=f".用户上传的文件地址: .\\uploads\\{session['uploaded_indication']}"
             session['messages2'].append({"role": "user",
                                          "content": data})
-
-        while compelete!=True and steps<2 and whole_step<5:
+        print(session['messages2'])
+        while compelete!=True and steps<2 and whole_step<=5:
                 whole_step+=1
                 chat_response = (chat_single(session['messages2'], ""))
                 content_str=''
@@ -343,7 +340,7 @@ except:
                     print(code_str)
                     sys.stdout = output
                     try:
-                        exec(code_str, session['globals_dict'])
+                        exec(code_str, globals())
                     except Exception as e:
                         print(f"An error occurred: {repr(e)}")
                     code_result = output.getvalue().replace('\00', '')
@@ -405,11 +402,16 @@ def stream():
                 print("plt_show")
                 filename = f"plot_{datetime.now().strftime('%Y%m%d%H%M%S')}.png"
                 code_str = code_str.replace("plt.show()", f"plt.savefig('static/{filename}')")
-                print(code_str)
+
+            # elif "search.run" in code_str:
+            #     code_str="search = DuckDuckGoSearchResults()\n"+code_str
             else:
                 lines = code_str.strip().split('\n')
                 # last_line = [line for line in lines if '=' in line][-1]
                 if "print" not in lines[-1] and "=" not in lines[-1] and "#" not in lines[-1]:
+                    # if "search.run" in code_str:
+                    #     code_str=code_str.replace("search.run","print(search.run")+")"
+                    # else:
                     code_str += f"""
 try:
                    print({lines[-1]})
@@ -417,17 +419,18 @@ except:
                    pass
                                         """
                 # var_name = last_line.split('=')[0].strip()
-            print(code_str)
+            print(code_str,"code_after_process")
             sys.stdout = output
             try:
-                exec(code_str, session['globals_dict'])
+                exec(code_str, globals())
             except Exception as e:
-                print(f"An error occurred: {e}")
+                print(f"An error occurred: {str(e)}")
+                print(f"An error occurred: {repr(e)}")
             code_result = output.getvalue().replace('\00', '')
             output.truncate(0)
             sys.stdout = original_stdout
 
-            if plt_show:
+            if plt_show and "An error occurred: " not in code_result:
                 code_result = f'![matplotlib_diagram](/static/{filename} "matplotlib_diagram")'
                 yield code_result
             else:

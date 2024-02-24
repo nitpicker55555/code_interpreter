@@ -1,5 +1,28 @@
+import json
+import re
+
+from flask import Flask, Response, stream_with_context, request, render_template, flash, jsonify,session
+from werkzeug.utils import secure_filename
+import time
+from openai import OpenAI
+import os
+from dotenv import load_dotenv
+import ast
+from langchain.tools import DuckDuckGoSearchResults
+
+search = DuckDuckGoSearchResults()
+load_dotenv()
+api_key = os.getenv('OPENAI_API_KEY')
+client = OpenAI()
+import sys
+from io import StringIO
 from datetime import datetime
-import traceback
+
+output = StringIO()
+original_stdout = sys.stdout
+app = Flask(__name__)
+
+app.secret_key = 'secret_key' # 用于启用 flash() 方法发送消息
 
 chat_result="""
 ```python
@@ -21,23 +44,8 @@ data
 chat3="""
 ```python
 
-import pandas as pd
-import matplotlib.pyplot as plt
+search.run("中国新闻")
 
-# Read the data from the Excel file
-file_path = './uploads/bitcoin_trend.xlsx'
-data = pd.read_excel(file_path)
-
-# Plot the data
-plt.figure(figsize=(10, 6))
-plt.plot(data['Date'], data['Price'], marker='o', linestyle='-')
-plt.title('Bitcoin Price Trend')
-plt.xlabel('Date')
-plt.ylabel('Price (USD)')
-plt.xticks(rotation=45)
-plt.grid(True)
-
-plt.show()
 
 
 ```
@@ -81,7 +89,7 @@ except:
     print(code_str)
     sys.stdout = output
     try:
-        exec(code_str, functions_dict)
+        exec(code_str, globals())
     except Exception as e:
         # print(traceback.print_exc())
         print(f"An error occurred: {repr(e)}")
