@@ -82,7 +82,7 @@
                     if(data.filename) {
                         var filenameShort = data.filename.slice(-10);
                         document.getElementById('upload-btn').value = ".."+filenameShort;
-                        process_input("User upload a file: "+data.filename)
+                        process_input("User upload a file in: .\\uploads\\"+data.filename)
 
                     } else {
                         alert('Upload failed');

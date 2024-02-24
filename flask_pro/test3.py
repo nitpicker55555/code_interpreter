@@ -1,6 +1,5 @@
 import json
 
-
 def complete_json(input_stream):
     """
     尝试补全一个不完整的JSON字符串，包括双引号和括号。
@@ -50,11 +49,32 @@ def complete_json(input_stream):
 
     # 再次尝试解析补全后的JSON
     return json.loads(input_stream)
+# # 示例输入
+# input_json = '{ "content":"as'
+#
+# # 调用函数并打印结果
+# completed_json = complete_json(input_json)
+# print(completed_json)
+import re
 
+# 示例字符串
+text =r"这是一个示例字符串，其中包含\\n已经被转义的换行符，和\n未被转义的换行符。"
 
-# 示例输入
-input_json = '{ "content":"asd","c'
+# 正则表达式替换
+# 使用负向前瞻断言来确保\n前面不是\
+# (?<!\\) 是一个负向前瞻断言，确保\n前面不是反斜杠
+# \n 是匹配换行符
+# 替换为 \\n
+replaced_text = re.sub(r'(?<!\\)\\n', r'\\\\n', text)
 
-# 调用函数并打印结果
-completed_json = complete_json(input_json)
-print(completed_json)
+print(replaced_text)
+
+#
+# markdown_text = """
+# {
+#   "description": "示例代码，展示如何在处理JSON数据时在每个键和值之间添加换行，用于打印或显示目的。",
+#   "code": "
+#
+# """
+#
+# print(complete_json(markdown_text))

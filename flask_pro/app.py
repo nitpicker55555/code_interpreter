@@ -1,6 +1,8 @@
+# -*- coding: utf-8 -*-
 import json
+import re
 
-from flask import Flask, Response, stream_with_context, request, render_template, flash, jsonify
+from flask import Flask, Response, stream_with_context, request, render_template, flash, jsonify,session
 from werkzeug.utils import secure_filename
 import time
 from openai import OpenAI
@@ -23,48 +25,62 @@ app.secret_key = 'secret_key' # 用于启用 flash() 方法发送消息
 # 示例的 Markdown 文本（包含图片链接）
 # ![示例图片](/static/data.png "这是一个示例图片")
 import inspect
-locals_dict = {}
-globals_dict = globals()
 
 
 
 markdown_text = """
-要编写一个Python程序来读取一个文件夹（目录）中的所有文件和子目录
+asdasd
 ```python
+import pandas as pd
+
+# Load the CSV file into a pandas DataFrame
+file_path = './uploads/risk.csv'
+data = pd.read_csv(file_path)
 import matplotlib.pyplot as plt
-import numpy as np
+matplotlib.use('agg')
+# Selecting columns for the bar chart
+columns = ['y1', 'y2', 'y3', 'y4']
 
-# 参数方程
-t = np.linspace(0, 2 * np.pi, 1000)
-x = 16 * np.sin(t) ** 3
-y = 13 * np.cos(t) - 5 * np.cos(2 * t) - 2 * np.cos(3 * t) - np.cos(4 * t)
-
-plt.figure(figsize=(8, 7))
-plt.plot(x, y, color='red')
-plt.title('Heart Shape')
-plt.axis('equal')  # 确保长宽比相等，这样心形看起来才正确
+# Creating a bar chart
+plt.bar(columns, data[columns].mean())  # Using mean value for each column
+plt.xlabel('Columns')
+plt.ylabel('Mean Value')
+plt.title('Mean Value of Selected Columns')
 plt.show()
-
 ```
-
 """
 
+# normal_prompt = r"""
+# You have a virtual environment equipped with a python environment. The python code you
+# give will be automatically run by the system, so you can freely achieve your goals through python
+# code. The code running results will be returned to you after the execution is completed. You can use
+# python code to view all information about the current environment, or use matplotlib to draw charts.
+# But note that if you want to get the value of a variable, please use print() to print it out; the
+# variables in the code you give will be stored in the environment and can be called directly next
+# time.
+#
+# Process upload file:
+# User can upload file in location: .\uploads\
+# You can use python code to read and process it.
+#
+# Finish tag:
+# When you think no further reply needed, please add ```status_complete``` at the end of response, if you think further
+# response is needed, please add ```status_running``` at the end of response.
+#
+# Writing Python:
+# If you want to get the value of a variable, please use print() to print it out.
+# """
 normal_prompt = r"""
-You have a virtual environment equipped with a python environment. The python code you 
-give will be automatically run by the system, so you can freely achieve your goals through python 
-code. The code running results will be returned to you after the execution is completed. You can use 
-python code to view all information about the current environment, or use matplotlib to draw charts. 
-But note that if you want to get the value of a variable, please use print() to print it out; the 
-variables in the code you give will be stored in the environment and can be called directly next 
+You have a virtual environment equipped with a python environment. You can freely achieve your goals through python 
+code. You can use python code to process user upload files, or use matplotlib to draw charts. 
+The variables in the code you give will be stored in the environment and can be called directly next 
 time.
 
 Process upload file:
 User can upload file in location: .\uploads\
 You can use python code to read and process it.
+"""
 
-Response format: Please always response in json format like: { "content":"", "complete":false/true } "content" is the 
-content of your response, "complete" represents whether you think the reply has been completed, if no more response 
-needed please set "complete" as true, otherwise set it as false. """
 judge_prompt="""You are a task completion judge. I will tell you the goal and current completion status of this task. 
 You need to output whether it is completed now in json format. If it is completed, output {"complete":true}. If not, 
 output {"complete":false} """
@@ -91,11 +107,56 @@ def chat_single(messages, mode="json"):
         )
         return response
 
+def complete_json(input_stream):
+    """
+    尝试补全一个不完整的JSON字符串，包括双引号和括号。
 
-messages2 = []
-messages2.append({"role": "system",
-                  "content": normal_prompt
-                  })
+    参数:
+    - input_stream: 一个可能不完整的JSON字符串
+
+    返回:
+    - 完整的JSON对象
+    """
+    brackets = {'{': '}', '[': ']'}
+    quotes = {'"': '"'}
+    stack = []
+    in_string = False
+
+    # 尝试解析JSON，如果失败则补全
+    try:
+        return json.loads(input_stream)
+    except json.JSONDecodeError:
+        pass  # 继续到补全逻辑
+
+    # 逐字符遍历输入字符串
+    for char in input_stream:
+        if char in quotes and not in_string:
+            # 进入字符串
+            in_string = True
+            stack.append(quotes[char])
+        elif char in quotes and in_string:
+            # 结束字符串
+            in_string = False
+            stack.pop()
+        elif char in brackets and not in_string:
+            # 进入对象或数组
+            stack.append(brackets[char])
+        elif stack and char == stack[-1] and not in_string:
+            # 退出对象或数组
+            stack.pop()
+
+    # 补全字符串
+    if in_string:
+        input_stream += '"'
+        stack.pop()
+
+    # 根据栈中剩余的括号补全JSON
+    while stack:
+        input_stream += stack.pop()
+
+    # 再次尝试解析补全后的JSON
+    return json.loads(input_stream)
+
 
 
 
@@ -168,6 +229,7 @@ def upload_file():
     if file and allowed_file(file.filename):
         filename = secure_filename(file.filename)
         file.save(os.path.join(app.config['UPLOAD_FOLDER'], filename))
+        session['uploaded_indication'] = filename
         return jsonify({"filename": filename}), 200
     else:
         return jsonify({"error": "File type not allowed"}), 400
@@ -179,6 +241,13 @@ def request_entity_too_large(error):
 @app.route('/')
 def home():
     # 加载包含 Markdown 容器的前端页面
+    session['globals_dict'] = {}
+
+    session['uploaded_indication'] = None
+    session['messages2'] = []
+    session['messages2'].append({"role": "system",
+                                 "content": normal_prompt
+                                 })
     return render_template('index.html')
 
 def auto_json():
@@ -187,6 +256,7 @@ def auto_json():
 def submit():
     # 加载包含 Markdown 容器的前端页面
     data = request.get_json().get('text')  # 获取JSON数据
+
     print(data)  # 输出查看，实际应用中你可能会做其他处理
     task=data
 
@@ -195,103 +265,110 @@ def submit():
 
     def generate(data):
 
-        messages2.append({"role": "user",
-                          "content": data})
+
+
         compelete = False
         steps=0
+        whole_step=0
         # while compelete!=True and steps<6:
         #     steps+=1
+        if "User upload a file in:" in data:
+            chat_response = "文件上传完成！告诉我你想做什么？"
+            compelete = True
+            
+            yield chat_response
+        else:
+            if session['uploaded_indication'] !=None:
+                data+=f".用户上传的文件地址: .\\uploads\\{session['uploaded_indication']}"
+            session['messages2'].append({"role": "user",
+                                         "content": data})
 
-        while compelete!=True and steps<3:
-            steps+=1
-            chat_response = (chat_single(messages2, "json"))
+        while compelete!=True and steps<2 and whole_step<5:
+                whole_step+=1
+                chat_response = (chat_single(session['messages2'], ""))
+                content_str=''
+                chat_result = ''
+                chunk_num=0
+                for chunk in chat_response:
+                    if chunk.choices[0].delta.content is not None:
+                        if chunk_num==0:
+                            char = "\n"+chunk.choices[0].delta.content
+                        else:
+                            char =  chunk.choices[0].delta.content
+                        chunk_num+=1
 
-            chat_result = ''
-            for chunk in chat_response:
-                if chunk.choices[0].delta.content is not None:
-                    char = chunk.choices[0].delta.content
-                    print(char, end="")
-                    chat_result += char
-                    yield char
-            try:
-                full_result=json.loads(chat_result)
-            except:
-                full_result=chat_result
-            compelete=full_result['complete']
-            print("complete: ",compelete)
-            messages2.append({"role": "assistant",
-                              "content": str(chat_result)})
-            if "```python" in chat_result:
-                yield "\n\n`Code running...`\n"
+                        print(char, end="")
+                        chat_result += char
+                        yield char
+                        # try:
+                        #     json_str = complete_json(chat_result)
+                        #     new_content = json_str['content']
+                        #     if new_content != content_str:
+                        #         char_content = new_content[len(content_str):]
+                        #         content_str = new_content
+                        #         print(char_content, end="")
+                        #
+                        #         yield char_content
+                        # except:
+                        #     pass
+                full_result=(chat_result)
 
-                code_str = extract_code(chat_result)
-                plt_show = False
-                if "plt.show()" in code_str:
-                    plt_show = True
-                    print("plt_show")
-                    filename = f"plot_{datetime.now().strftime('%Y%m%d%H%M%S')}.png"
-                    code_str = code_str.replace("plt.show()", f"plt.savefig('static/{filename}')")
+                compelete=False
+                print("complete: ",compelete)
+                session['messages2'].append({"role": "assistant",
+                                  "content": str(chat_result)})
+                if "```python" in full_result:
+                    yield "\n\n`Code running...`\n"
+
+                    # code_str = re.sub(r'(?<!\\)\\n', r'\\\\n', extract_code(full_result['content']))
+                    code_str = extract_code(full_result)
+                    plt_show = False
+                    if "plt.show()" in code_str:
+                        plt_show = True
+                        print("plt_show")
+                        filename = f"plot_{datetime.now().strftime('%Y%m%d%H%M%S')}.png"
+                        code_str = code_str.replace("plt.show()", f"plt.savefig('static/{filename}')")
+                        print(code_str)
+                    else:
+                        lines = code_str.strip().split('\n')
+                        # last_line = [line for line in lines if '=' in line][-1]
+                        if "print" not in lines[-1] and "=" not in lines[-1] and "#" not in lines[-1]:
+                            code_str+=f"""
+try:
+       print({lines[-1]})
+except:
+       pass
+                            """
+                        # var_name = last_line.split('=')[0].strip()
                     print(code_str)
-                sys.stdout = output
-                try:
-                    exec(code_str, globals_dict)
-                except Exception as e:
-                    print(f"An error occurred: {e}")
-                code_result = output.getvalue().replace('\00', '')
-                output.truncate(0)
-                sys.stdout = original_stdout
+                    sys.stdout = output
+                    try:
+                        exec(code_str, session['globals_dict'])
+                    except Exception as e:
+                        print(f"An error occurred: {repr(e)}")
+                    code_result = output.getvalue().replace('\00', '')
+                    output.truncate(0)
+                    sys.stdout = original_stdout
 
-                if plt_show:
-                    code_result = f'![matplotlib_diagram](/static/{filename} "matplotlib_diagram")'
-                    yield code_result
+                    if plt_show and "An error occurred: " not in code_result:
+                        code_result = f'![matplotlib_diagram](/static/{filename} "matplotlib_diagram")'
+                        yield code_result
+                    else:
+                        code_result=code_result
+
+                        yield details_span(code_result)
+
+                    send_result= "code_result:"+short_response(code_result)
+                    print(send_result)
+                    session['messages2'].append({"role": "user",
+                                  "content": send_result})
+                    compelete=False
+
                 else:
-                    code_result=code_result
+                    steps += 1
+                    session['messages2'].append({"role": "user",
+                                      "content": "continue"})
 
-                    yield details_span(code_result)
-
-                send_result= "code_result:"+short_response(code_result)
-                print(send_result)
-            # messages2.append({"role": "user",
-            #                   "content": send_result})
-                generate(send_result)
-        # else:
-        #     messages_judge = []
-        #     messages_judge.append({"role": "system",
-        #                            "content": judge_prompt
-        #                            })
-        #     messages_judge.append({"role": "user",
-        #                            "content": "Goal:" + task+" current_status:"+chat_result})
-        #     chat_response = chat_single(messages_judge, "json")
-        #     print(chat_response)
-        #     yield f"\n`{chat_response}`\n"
-                # try:
-                #     judge = json.loads(chat_response)
-                # except:
-                #     judge = (chat_response)
-                #
-                # if "complete" in judge:
-                #     if judge['complete']!=True:
-                #         print("continue")
-                #         messages2.append({"role": "user",
-                #                           "content": "continue"})
-                #     else:
-                #         compelete=True
-                # else:
-                #     compelete = True
-
-            # print("code_result: ",code_result)
-            # messages2.append({"role": "user",
-            #                   "content": send_result})
-            # chat_response_code = (chat_single(messages2, ""))
-            # chat_result = ''
-            # for chunk in chat_response_code:
-            #     if chunk.choices[0].delta.content is not None:
-            #         char = chunk.choices[0].delta.content
-            #         print(char, end="")
-            #         chat_result += char
-            #         yield char
-            # messages2.append({"role": "assistant",
-            #                   "content": chat_result})
 
     return Response(stream_with_context(generate(data)))
 
@@ -304,14 +381,24 @@ def stream():
     # print(data)  # 输出查看，实际应用中你可能会做其他处理
     def generate():
         full_text = ''
+        content_str = ""
+        code_indicator=False
         for char in markdown_text:
+
             full_text += char
             yield char
-            time.sleep(0.001)  # 减小这个值以提高响应速度
+            print(char,end="")
+            time.sleep(0.001)
+        # yield "\n```\n"
+        # json_response=json.loads(full_text)
+        # yield f"\n`{str(json_response['complete'])}`\n"
+        # yield "json_response['complete']"
         if "```python" in full_text:
             yield "\n\n`Code running...`\n"
 
+            # code_str = re.sub(r'(?<!\\)\\n', r'\\\\n', extract_code(json_response['content']))
             code_str = extract_code(full_text)
+            print(code_str,"code")
             plt_show = False
             if "plt.show()" in code_str:
                 plt_show = True
@@ -319,9 +406,21 @@ def stream():
                 filename = f"plot_{datetime.now().strftime('%Y%m%d%H%M%S')}.png"
                 code_str = code_str.replace("plt.show()", f"plt.savefig('static/{filename}')")
                 print(code_str)
+            else:
+                lines = code_str.strip().split('\n')
+                # last_line = [line for line in lines if '=' in line][-1]
+                if "print" not in lines[-1] and "=" not in lines[-1] and "#" not in lines[-1]:
+                    code_str += f"""
+try:
+                   print({lines[-1]})
+except:
+                   pass
+                                        """
+                # var_name = last_line.split('=')[0].strip()
+            print(code_str)
             sys.stdout = output
             try:
-                exec(code_str, globals_dict)
+                exec(code_str, session['globals_dict'])
             except Exception as e:
                 print(f"An error occurred: {e}")
             code_result = output.getvalue().replace('\00', '')
@@ -340,4 +439,4 @@ def stream():
 
 
 if __name__ == '__main__':
-    app.run(debug=True)
+    app.run(debug=False)
