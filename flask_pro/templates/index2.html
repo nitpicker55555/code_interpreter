@@ -2,38 +2,40 @@
 <html lang="en">
 <head>
     <meta charset="UTF-8">
-    <title>File Upload</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Chat Example</title>
 </head>
 <body>
-
-<input type="button" id="upload-btn" value="Upload File" onclick="document.getElementById('file-input').click();" />
-<input type="file" id="file-input" style="display: none;" onchange="uploadFile()" />
+<h2>Chat</h2>
+<input type="text" id="messageInput" placeholder="Type a message...">
+<button onclick="sendMessage()">Send</button>
+<ul id="messagesList"></ul>
 
 <script>
-function uploadFile() {
-    var fileInput = document.getElementById('file-input');
-    var file = fileInput.files[0];
-    var formData = new FormData();
-    formData.append('file', file);
-
-    fetch('/upload', {
-        method: 'POST',
-        body: formData,
-    })
-    .then(response => response.json())
-    .then(data => {
-        if(data.filename) {
-            document.getElementById('upload-btn').value = data.filename;
-        } else {
-            alert('Upload failed');
-        }
-    })
-    .catch(error => {
-        console.error('Error:', error);
-        alert('Upload error');
-    });
-}
+    function sendMessage() {
+        const message = document.getElementById('messageInput').value;
+        fetch('/chat', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+            },
+            body: JSON.stringify({text: message}),
+        })
+            .then(response => response.json())
+            .then(data => {
+                document.getElementById('messageInput').value = ''; // Clear input box
+                const messagesList = document.getElementById('messagesList');
+                messagesList.innerHTML = ''; // Clear current messages
+                data.messages.forEach((msg) => {
+                    const li = document.createElement('li');
+                    li.textContent = msg;
+                    messagesList.appendChild(li);
+                });
+            })
+            .catch((error) => {
+                console.error('Error:', error);
+            });
+    }
 </script>
-
 </body>
 </html>

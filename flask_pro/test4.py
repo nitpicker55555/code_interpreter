@@ -1,10 +1,10 @@
-from langchain.tools import DuckDuckGoSearchResults
+import matplotlib.pyplot as plt
+from matplotlib.font_manager import FontProperties
 
-search = DuckDuckGoSearchResults()
+font = FontProperties(fname=r"C:\Windows\Fonts\msyh.ttc", size=14)  # 以微软雅黑为例
 
-search.run("中国新闻")
-
-try:
-       print(search.run("中国新闻"))
-except:
-       pass
+plt.plot([1, 2, 3], [4, 5, 6])
+plt.title('示例图表', fontproperties=font)
+plt.xlabel('X轴', fontproperties=font)
+plt.ylabel('Y轴', fontproperties=font)
+plt.show()

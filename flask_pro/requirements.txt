@@ -3,3 +3,5 @@ langchain
 duckduckgo-search
 python-dotenv
 flask
+flask_socketio
+flask_session

@@ -13,13 +13,14 @@ import ast
 from langchain.tools import DuckDuckGoSearchResults
 from user_agents import parse
 import requests
+from flask_session import Session  # 导入Flask-Session
 load_dotenv()
 api_key = os.getenv('OPENAI_API_KEY')
 client = OpenAI()
 import sys
 from io import StringIO
 from datetime import datetime
-
+from flask_socketio import SocketIO, emit
 output = StringIO()
 original_stdout = sys.stdout
 app = Flask(__name__)
@@ -28,13 +29,21 @@ app.secret_key = 'secret_key' # 用于启用 flash() 方法发送消息
 
 # 示例的 Markdown 文本（包含图片链接）
 # ![示例图片](/static/data.png "这是一个示例图片")
-import inspect
+socketio = SocketIO(app)
 
+app.config["SESSION_TYPE"] = "filesystem"  # 使用文件系统存储会话
+Session(app)
 search = DuckDuckGoSearchResults()
 markdown_text = """
 asdasd
 ```python
-search_internet("中国新闻")
+import matplotlib.pyplot as plt
+plt.plot([1, 2, 3], [4, 5, 6])
+plt.title('示例图表', fontproperties=font)
+plt.xlabel('X轴', fontproperties=font)
+plt.ylabel('Y轴', fontproperties=font)
+plt.show()
+
 ```
 """
 
@@ -100,7 +109,7 @@ def search_internet(news):
 
     async def async_task():
         # 你的异步代码
-        print(search.run(news))
+        print([search.run(news)])
 
     loop.run_until_complete(async_task())
     loop.close()
@@ -247,13 +256,15 @@ def home():
     # 加载包含 Markdown 容器的前端页面
     # session['globals_dict'] ={}
     # session['locals_dict'] = locals()
+    print("初始化")
     ip_=request.headers.get('X-Real-IP')
     session['ip_']=ip_
     session['uploaded_indication'] = None
-    session['messages2'] = []
-    session['messages2'].append({"role": "system",
-                                 "content": normal_prompt
-                                 })
+    # if 'messages2' not in session:
+    #     session['messages2'] = []
+    #     session['messages2'].append({"role": "system",
+    #                                  "content": normal_prompt
+    #                                  })
     user_agent_string = request.headers.get('User-Agent')
     user_agent = parse(user_agent_string)
 
@@ -273,23 +284,18 @@ def home():
     session['device_type']=device_type
     return render_template('index.html')
 
-def auto_json():
-    pass
+def send_data(data):
+    # 假设这个函数在某些事件发生时被触发，并向所有客户端发送信息
+    socketio.emit('text', {'data': data})
 @app.route('/submit', methods=['POST', 'GET'])
 def submit():
     # 加载包含 Markdown 容器的前端页面
     data = request.get_json().get('text')  # 获取JSON数据
-
-    print(data)  # 输出查看，实际应用中你可能会做其他处理
-    task=data
-
-
-
+    messages = request.get_json().get('messages')  # 获取JSON数据
+    processed_response=[]
+    print(len(messages))
 
     def generate(data):
-
-
-
 
         compelete = False
         steps=0
@@ -303,26 +309,33 @@ def submit():
             yield chat_response
         else:
             if session['uploaded_indication'] !=None:
-                data+=f".用户上传的文件地址: .\\uploads\\{session['uploaded_indication']}"
-            session['messages2'].append({"role": "user",
-                                         "content": data})
-        print(session['messages2'])
+                messages[0]['content']+=f"\n用户上传了文件，地址: .\\uploads\\{session['uploaded_indication']}"
+                # data+=f".(用户上传的文件地址: .\\uploads\\{session['uploaded_indication']})"
+            # session['messages2'].append({"role": "user",
+            #                              "content": data})
+
         while compelete!=True and steps<2 and whole_step<=5:
+                # print(messages)
                 whole_step+=1
-                chat_response = (chat_single(session['messages2'], ""))
+                # chat_response = str(datetime.now())+"   "+str(len(messages)) #test
+                chat_response = (chat_single(messages, ""))
                 content_str=''
                 chat_result = ''
                 chunk_num=0
                 for chunk in chat_response:
+                    # if chunk is not None:
                     if chunk.choices[0].delta.content is not None:
                         if chunk_num==0:
                             char = "\n"+chunk.choices[0].delta.content
+                            # char = "\n"+chunk #test
                         else:
                             char =  chunk.choices[0].delta.content
+                            # char =  chunk #test
                         chunk_num+=1
 
                         print(char, end="")
                         chat_result += char
+
                         yield char
                         # try:
                         #     json_str = complete_json(chat_result)
@@ -336,11 +349,12 @@ def submit():
                         # except:
                         #     pass
                 full_result=(chat_result)
+                processed_response.append({'role':'assistant','content':chat_result})
+                messages.append({'role':'assistant','content':chat_result})
 
                 compelete=False
                 print("complete: ",compelete)
-                session['messages2'].append({"role": "assistant",
-                                  "content": str(chat_result)})
+
                 if "```python" in full_result:
                     yield "\n\n`Code running...`\n"
 
@@ -351,7 +365,10 @@ def submit():
                         plt_show = True
                         print("plt_show")
                         filename = f"plot_{datetime.now().strftime('%Y%m%d%H%M%S')}.png"
+                        code_str = code_str.replace("import matplotlib.pyplot as plt",
+                                                    "import matplotlib.pyplot as plt\nfrom matplotlib.font_manager import FontProperties\nfont = FontProperties(fname=r'static\msyh.ttc')\n")
                         code_str = code_str.replace("plt.show()", f"plt.savefig('static/{filename}')")
+
                         print(code_str)
                     else:
                         lines = code_str.strip().split('\n')
@@ -376,6 +393,7 @@ except:
 
                     if plt_show and "An error occurred: " not in code_result:
                         code_result = f'![matplotlib_diagram](/static/{filename} "matplotlib_diagram")'
+                        whole_step=5 #确保图返回结果只会被描述一次
                         yield code_result
                     else:
                         code_result=code_result
@@ -384,35 +402,41 @@ except:
 
                     send_result= "code_result:"+short_response(code_result)
                     print(send_result)
-                    session['messages2'].append({"role": "user",
+                    messages.append({"role": "user",
                                   "content": send_result})
+                    processed_response.append({'role':'user','content':send_result})
                     compelete=False
                     final_conv=send_result
 
                 else:
                     steps += 1
-                    session['messages2'].append({"role": "user",
-                                      "content": "好"})
-                    final_conv='好'
+                    if steps<2 and whole_step<5:
+                        messages.append({"role": "user",
+                                          "content": "好"})
+                        processed_response.append({"role": "user",
+                                          "content": "好"})
+                        final_conv='好'
 
-                data_with_response = {
-                    'len': str(len(session['messages2'])),
-                    'time': str(datetime.now()),
-                    'ip': str(session['ip_']),
-                    'location': query_ip_location(session['ip_']),
-                    'user': str(final_conv),
-                    'os': str(session['os']),
-                    'browser': str(session['browser']),
-                    'device': str(session['device_type']),
-                    'answer': str(full_result)
-                    # 'answer': response_str
-                }
+        send_data(processed_response)
+        data_with_response = {
+            'len': str(len(messages)),
+            'time': str(datetime.now()),
+            'ip': str(session['ip_']),
+            'location': query_ip_location(session['ip_']),
+            'user': str(data),
+            'os': str(session['os']),
+            'browser': str(session['browser']),
+            'device': str(session['device_type']),
+            'answer': str(processed_response)
+            # 'answer': response_str
+        }
 
-                formatted_data = json.dumps(data_with_response, indent=2, ensure_ascii=False)
 
-                # 写入文本文件
-                with open('static/data3.txt', 'a', encoding='utf-8') as file:
-                    file.write(formatted_data)
+        formatted_data = json.dumps(data_with_response, indent=2, ensure_ascii=False)
+
+        # 写入文本文件
+        with open('static/data3.txt', 'a', encoding='utf-8') as file:
+            file.write(formatted_data)
     return Response(stream_with_context(generate(data)))
 def query_ip_location(ip):
     try:
@@ -463,7 +487,9 @@ def stream():
             if "plt.show()" in code_str:
                 plt_show = True
                 print("plt_show")
+
                 filename = f"plot_{datetime.now().strftime('%Y%m%d%H%M%S')}.png"
+                code_str=code_str.replace("import matplotlib.pyplot as plt","import matplotlib.pyplot as plt\nfrom matplotlib.font_manager import FontProperties\nfont = FontProperties(fname=r'static\msyh.ttc')\n")
                 code_str = code_str.replace("plt.show()", f"plt.savefig('static/{filename}')")
 
             # elif "search.run" in code_str:
@@ -505,4 +531,4 @@ except:
 
 
 if __name__ == '__main__':
-    app.run(debug=False,host='0.0.0.0')
+    socketio.run(app,host='0.0.0.0')
