@@ -58,14 +58,16 @@ search_internet("中国新闻")
 # Writing Python:
 # If you want to get the value of a variable, please use print() to print it out.
 # """
-normal_prompt = r"""
-You have a virtual environment equipped with a python environment and function 'search_internet('news')' to access internet. You can freely achieve your goals through python 
-code. You can use python code to process user upload files, or use matplotlib to draw charts, and use 'search_internet("news")' to access internet. 
-The variables in the code you give will be stored in the environment and can be called directly next 
-time.
+normal_prompt = r"""You have a virtual environment equipped with a python environment and internet.
+You can use python code to process user upload files, or use matplotlib to draw charts, and use 'search_internet("news")' to access 
+internet. The variables in the code you give will be stored in the environment and can be called directly next time. 
+
+Please notice: If you want to write code, please write with markdown format. If user wants to search news or 
+informations in internet, use python code: 'search_internet('what you want to search')' to get relevant information, 
+do not use other python code. 
 
 Access internet: You can access internet to search information by calling function search_internet("news"), Example: you 
-can run search_internet("China news") to get news in China. Run search_internet("Germany news") to get news in germany."""
+can write python code '```python\nsearch_internet("西安新闻")\n```' to get news in 西安. Write '```python\nsearch_internet("Germany news")\n```' to get news in germany."""
 
 judge_prompt="""You are a task completion judge. I will tell you the goal and current completion status of this task. 
 You need to output whether it is completed now in json format. If it is completed, output {"complete":true}. If not, 
@@ -160,7 +162,7 @@ def complete_json(input_stream):
 def extract_code(code_str):
     return code_str.split("```python")[1].split("```")[0]
 def len_str2list(result):
-    result=result.replace("None","").replace(" ","")
+    # result=result.replace("None","").replace(" ","")
     try:
         # 尝试使用 ast.literal_eval 解析字符串
         result = ast.literal_eval(result)
@@ -390,8 +392,8 @@ except:
                 else:
                     steps += 1
                     session['messages2'].append({"role": "user",
-                                      "content": "continue"})
-                    final_conv='continue'
+                                      "content": "好"})
+                    final_conv='好'
 
                 data_with_response = {
                     'len': str(len(session['messages2'])),
@@ -503,4 +505,4 @@ except:
 
 
 if __name__ == '__main__':
-    app.run(debug=False)
+    app.run(debug=False,host='0.0.0.0')

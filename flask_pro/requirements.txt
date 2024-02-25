@@ -1,5 +1,5 @@
 openai
 langchain
 duckduckgo-search
-dotenv
+python-dotenv
 flask
