@@ -11,8 +11,8 @@ import os
 from dotenv import load_dotenv
 import ast
 from langchain.tools import DuckDuckGoSearchResults
-
-
+from user_agents import parse
+import requests
 load_dotenv()
 api_key = os.getenv('OPENAI_API_KEY')
 client = OpenAI()
@@ -59,13 +59,13 @@ search_internet("中国新闻")
 # If you want to get the value of a variable, please use print() to print it out.
 # """
 normal_prompt = r"""
-You have a virtual environment equipped with a python environment and a function to access internet. You can freely achieve your goals through python 
+You have a virtual environment equipped with a python environment and function 'search_internet('news')' to access internet. You can freely achieve your goals through python 
 code. You can use python code to process user upload files, or use matplotlib to draw charts, and use 'search_internet("news")' to access internet. 
 The variables in the code you give will be stored in the environment and can be called directly next 
 time.
 
 Access internet: You can access internet to search information by calling function search_internet("news"), Example: you 
-can run search_internet("China news") to get news in China. """
+can run search_internet("China news") to get news in China. Run search_internet("Germany news") to get news in germany."""
 
 judge_prompt="""You are a task completion judge. I will tell you the goal and current completion status of this task. 
 You need to output whether it is completed now in json format. If it is completed, output {"complete":true}. If not, 
@@ -160,6 +160,7 @@ def complete_json(input_stream):
 def extract_code(code_str):
     return code_str.split("```python")[1].split("```")[0]
 def len_str2list(result):
+    result=result.replace("None","").replace(" ","")
     try:
         # 尝试使用 ast.literal_eval 解析字符串
         result = ast.literal_eval(result)
@@ -186,7 +187,7 @@ def details_span(result):
 
     aa=f"""
 <details>
-    <summary>`Code result ▲ Length:{len_str2list(result)}`</summary>
+    <summary>`运行结果 (点击展开) Length:{len_str2list(result)}`</summary>
        {str(result)}
 </details>
     """
@@ -228,6 +229,12 @@ def upload_file():
         return jsonify({"filename": filename}), 200
     else:
         return jsonify({"error": "File type not allowed"}), 400
+@app.route('/submit_email', methods=['POST'])
+def submit_email():
+    data=request.get_json().get('text')
+    with open("./static/email.text",'a',encoding='utf-8') as file:
+        file.write('\n'+json.dumps({"email":data,"time":str(datetime.now()),"ip":session['ip_'],"os":session['os'],"device":session['device_type'],'browser':session['browser']}))
+    return jsonify({"text": True}), 400
 
 @app.errorhandler(413)
 def request_entity_too_large(error):
@@ -238,12 +245,30 @@ def home():
     # 加载包含 Markdown 容器的前端页面
     # session['globals_dict'] ={}
     # session['locals_dict'] = locals()
-
+    ip_=request.headers.get('X-Real-IP')
+    session['ip_']=ip_
     session['uploaded_indication'] = None
     session['messages2'] = []
     session['messages2'].append({"role": "system",
                                  "content": normal_prompt
                                  })
+    user_agent_string = request.headers.get('User-Agent')
+    user_agent = parse(user_agent_string)
+
+    # 获取操作系统和浏览器信息
+    os = user_agent.os.family  # 操作系统
+    browser = user_agent.browser.family  # 浏览器
+    if user_agent.is_mobile:
+        device_type = 'Mobile'
+    elif user_agent.is_tablet:
+        device_type = 'Tablet'
+    elif user_agent.is_pc:
+        device_type = 'Desktop'
+    else:
+        device_type = 'Unknown'
+    session['os']=os
+    session['browser']=browser
+    session['device_type']=device_type
     return render_template('index.html')
 
 def auto_json():
@@ -272,7 +297,7 @@ def submit():
         if "User upload a file in:" in data:
             chat_response = "文件上传完成！告诉我你想做什么？"
             compelete = True
-            
+
             yield chat_response
         else:
             if session['uploaded_indication'] !=None:
@@ -329,12 +354,12 @@ def submit():
                     else:
                         lines = code_str.strip().split('\n')
                         # last_line = [line for line in lines if '=' in line][-1]
-                        if "print" not in lines[-1] and "=" not in lines[-1] and "#" not in lines[-1]:
+                        if "print" not in lines[-1] and "=" not in lines[-1] and "#" not in lines[-1] and "search_internet" not in lines[-1]:
                             code_str+=f"""
 try:
-       print({lines[-1]})
+        print({lines[-1]})
 except:
-       pass
+        pass
                             """
                         # var_name = last_line.split('=')[0].strip()
                     print(code_str)
@@ -360,15 +385,51 @@ except:
                     session['messages2'].append({"role": "user",
                                   "content": send_result})
                     compelete=False
+                    final_conv=send_result
 
                 else:
                     steps += 1
                     session['messages2'].append({"role": "user",
                                       "content": "continue"})
+                    final_conv='continue'
 
+                data_with_response = {
+                    'len': str(len(session['messages2'])),
+                    'time': str(datetime.now()),
+                    'ip': str(session['ip_']),
+                    'location': query_ip_location(session['ip_']),
+                    'user': str(final_conv),
+                    'os': str(session['os']),
+                    'browser': str(session['browser']),
+                    'device': str(session['device_type']),
+                    'answer': str(full_result)
+                    # 'answer': response_str
+                }
 
+                formatted_data = json.dumps(data_with_response, indent=2, ensure_ascii=False)
+
+                # 写入文本文件
+                with open('static/data3.txt', 'a', encoding='utf-8') as file:
+                    file.write(formatted_data)
     return Response(stream_with_context(generate(data)))
+def query_ip_location(ip):
+    try:
+        ip = ip.replace(" ", "")
+        url = f"http://ip-api.com/json/{ip}"  # 使用ip-api.com提供的API
+        response = requests.get(url)
+        data = json.loads(response.text)
 
+        if data["status"] == "success":
+            country = data["country"]
+            city = data["city"]
+            region = data["regionName"]
+            isp = data["isp"]
+            res = str(region + "  " + city + "  " + isp)
+            return res
+        else:
+            return ip
+    except:
+        return ip
 
 @app.route('/stream', methods=['POST', 'GET'])
 def stream():
