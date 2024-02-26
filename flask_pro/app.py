@@ -3,7 +3,7 @@ import asyncio
 import json
 import re
 
-from flask import Flask, Response, stream_with_context, request, render_template, flash, jsonify,session
+from flask import Flask, Response, stream_with_context, request, render_template, jsonify,session
 from werkzeug.utils import secure_filename
 import time
 from openai import OpenAI
@@ -13,7 +13,7 @@ import ast
 from langchain.tools import DuckDuckGoSearchResults
 from user_agents import parse
 import requests
-from flask_session import Session  # 导入Flask-Session
+
 load_dotenv()
 api_key = os.getenv('OPENAI_API_KEY')
 client = OpenAI()
@@ -29,13 +29,41 @@ app.secret_key = 'secret_key' # 用于启用 flash() 方法发送消息
 
 # 示例的 Markdown 文本（包含图片链接）
 # ![示例图片](/static/data.png "这是一个示例图片")
-socketio = SocketIO(app)
+socketio =SocketIO(app,async_mode='threading')
 
-app.config["SESSION_TYPE"] = "filesystem"  # 使用文件系统存储会话
-Session(app)
+
 search = DuckDuckGoSearchResults()
+template_answer={'给我画一个♥心形':
+   [ """
+好的，现在请让我用python为你绘制出心形。
+```python
+import matplotlib.pyplot as plt
+import numpy as np
+
+# Parameters for the heart shape
+t = np.linspace(0, 2 * np.pi, 1000)
+x = 16 * np.sin(t) ** 3
+y = 13 * np.cos(t) - 5 * np.cos(2 * t) - 2 * np.cos(3 * t) - np.cos(4 * t)
+
+# Plotting
+plt.figure(figsize=(6,6))
+plt.plot(x, y, 'r')
+plt.fill(x, y, 'r')
+plt.axis('equal')
+plt.axis('off')
+plt.show()
+```
+    ""","这就是我为你绘制的心。"]
+,'最近西安有啥新闻':["""
+好的，现在来让我帮你搜索西安的新闻。
+```python
+search_internet("西安新闻")
+```
+搜索完成后结果会自动显示在这里，你可以告诉我你感兴趣的新闻。
+""","点击搜索结果你就可以看到我搜索到的新闻，你可以告诉我你对哪个新闻感兴趣。"]}
+
 markdown_text = """
-asdasd
+asdasdafsdfsdfsafasfasf
 ```python
 import matplotlib.pyplot as plt
 plt.plot([1, 2, 3], [4, 5, 6])
@@ -109,7 +137,7 @@ def search_internet(news):
 
     async def async_task():
         # 你的异步代码
-        print([search.run(news)])
+        print(search.run(news))
 
     loop.run_until_complete(async_task())
     loop.close()
@@ -266,22 +294,30 @@ def home():
     #                                  "content": normal_prompt
     #                                  })
     user_agent_string = request.headers.get('User-Agent')
-    user_agent = parse(user_agent_string)
+    if user_agent_string:
+        user_agent = parse(user_agent_string)
 
-    # 获取操作系统和浏览器信息
-    os = user_agent.os.family  # 操作系统
-    browser = user_agent.browser.family  # 浏览器
-    if user_agent.is_mobile:
-        device_type = 'Mobile'
-    elif user_agent.is_tablet:
-        device_type = 'Tablet'
-    elif user_agent.is_pc:
-        device_type = 'Desktop'
+
+
+
+        # 获取操作系统和浏览器信息
+        os = user_agent.os.family  # 操作系统
+        browser = user_agent.browser.family  # 浏览器
+        if user_agent.is_mobile:
+            device_type = 'Mobile'
+        elif user_agent.is_tablet:
+            device_type = 'Tablet'
+        elif user_agent.is_pc:
+            device_type = 'Desktop'
+        else:
+            device_type = 'Unknown'
+        session['os']=os
+        session['browser']=browser
+        session['device_type']=device_type
     else:
-        device_type = 'Unknown'
-    session['os']=os
-    session['browser']=browser
-    session['device_type']=device_type
+        session['os']=None
+        session['browser']=None
+        session['device_type']=None
     return render_template('index.html')
 
 def send_data(data):
@@ -298,10 +334,12 @@ def submit():
     def generate(data):
 
         compelete = False
-        steps=0
-        whole_step=0
-        # while compelete!=True and steps<6:
-        #     steps+=1
+        template=False
+        steps=0 #纯文字返回最多两次
+        whole_step=0 #总返回数,可以调整数值来限制未来的返回数
+        true_step=0 #总返回数
+        stop_step=False #强制该轮停止
+
         if "User upload a file in:" in data:
             chat_response = "文件上传完成！告诉我你想做什么？"
             compelete = True
@@ -314,29 +352,57 @@ def submit():
             # session['messages2'].append({"role": "user",
             #                              "content": data})
 
-        while compelete!=True and steps<2 and whole_step<=5:
+        while compelete!=True and steps<2 and whole_step<=5 and stop_step!=True:
                 # print(messages)
+                print(whole_step,"whole_step")
                 whole_step+=1
+                true_step+=1
                 # chat_response = str(datetime.now())+"   "+str(len(messages)) #test
-                chat_response = (chat_single(messages, ""))
+
+                if data in template_answer:
+                    chat_response = template_answer[data]
+                    template=True
+                    # stop_step=True
+                    # time.sleep(2)
+                else:
+
+                    chat_response = (chat_single(messages, ""))
                 content_str=''
                 chat_result = ''
                 chunk_num=0
-                for chunk in chat_response:
-                    # if chunk is not None:
-                    if chunk.choices[0].delta.content is not None:
-                        if chunk_num==0:
-                            char = "\n"+chunk.choices[0].delta.content
+                if template:
+                    print(true_step,len(chat_response))
+
+                    for chunk in chat_response[true_step-1]:
+                        if chunk_num == 0:
+                            char = "\n" + chunk
                             # char = "\n"+chunk #test
                         else:
-                            char =  chunk.choices[0].delta.content
+                            char = chunk
                             # char =  chunk #test
-                        chunk_num+=1
-
-                        print(char, end="")
+                        chunk_num += 1
                         chat_result += char
+                        time.sleep(0.001)
+                        if true_step==2:
+                            stop_step=True
 
                         yield char
+                else:
+                    for chunk in chat_response:
+                    # if chunk is not None:
+                        if chunk.choices[0].delta.content is not None:
+                            if chunk_num==0:
+                                char = "\n"+chunk.choices[0].delta.content
+                                # char = "\n"+chunk #test
+                            else:
+                                char =  chunk.choices[0].delta.content
+                                # char =  chunk #test
+                            chunk_num+=1
+
+                            print(char, end="")
+                            chat_result += char
+
+                            yield char
                         # try:
                         #     json_str = complete_json(chat_result)
                         #     new_content = json_str['content']
@@ -355,7 +421,7 @@ def submit():
                 compelete=False
                 print("complete: ",compelete)
 
-                if "```python" in full_result:
+                if "```python" in full_result and ".env" not in full_result and "pip install" not in full_result:
                     yield "\n\n`Code running...`\n"
 
                     # code_str = re.sub(r'(?<!\\)\\n', r'\\\\n', extract_code(full_result['content']))
@@ -531,4 +597,4 @@ except:
 
 
 if __name__ == '__main__':
-    socketio.run(app,host='0.0.0.0')
+    socketio.run(app, debug=True, allow_unsafe_werkzeug=True,host='0.0.0.0')

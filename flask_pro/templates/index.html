@@ -109,6 +109,13 @@
 <div class="container" id="title">
     <span class="code-interpreter">Code Interpreter</span>
     <div class="description">联网查询/分析文件/绘制图表</div>
+    <button class="rectangle-btn"  onclick="showNumber('给我画一个♥心形')">给我画一个♥心形</button>
+    <br>
+    <br>
+    <button class="rectangle-btn"  onclick="showNumber('最近西安有啥新闻')">最近西安有啥新闻</button>
+    <br>
+    <br>
+    <button class="rectangle-btn"  onclick="showNumber('分析我上传的文件')">分析我上传的文件</button>
 </div>
 <div class="input-button-container">
     <input type="button" id="upload-btn" class="your-button-class" value="上传文件" onclick="document.getElementById('file-input').click();" />
@@ -120,6 +127,15 @@
 <script>
     // function uploadFile() {
     //
+    function showNumber(text) {
+        if(text==="分析我上传的文件"){
+            document.getElementById('upload-btn').click()
+        }else {
+            var numberInput = document.getElementById("inputField");
+            numberInput.value = text;
+        }
+
+    }
     // /}
     document.getElementById('nightModeToggle').addEventListener('click', function() {
         document.body.classList.toggle('night-mode');
@@ -282,7 +298,7 @@ ${String.fromCharCode(96)} to get news in Germany.`
                 messages.push({"role":"user","content":userInput})
                 document.getElementById('inputField').value=''
                 // 使用 fetch 发送数据
-                fetch('/stream', {
+                fetch('/submit', {
                     method: 'POST', // 指定请求方法为POST
                     headers: {
                         'Content-Type': 'application/json', // 指定发送的数据类型为 JSON

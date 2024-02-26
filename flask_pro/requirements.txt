@@ -5,3 +5,12 @@ python-dotenv
 flask
 flask_socketio
 flask_session
+pandas
+xlrd
+matplotlib
+beautifulsoup
+xml
+opencv
+csv
+python-docx
+user_agents
