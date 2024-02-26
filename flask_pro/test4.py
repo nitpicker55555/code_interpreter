@@ -1,23 +1,38 @@
-# -*- coding: gbk -*-
-import ast
-import json
+# -*- coding: utf-8 -*-
+from flask import Flask, render_template
+import folium
 
-a='[[snippet: Î÷°²ÍøÊÇÎ÷°²ÊĞÎ¯ÊĞÕş¸®Ö÷¹ÜµÄĞÂÎÅ×ÊÑ¶Æ½Ì¨£¬Ìá¹©Î÷°²ÊĞÄÚÍâµÄÕşÖÎ¡¢¾­¼Ã¡¢Éç»á¡¢ÎÄ»¯¡¢ÌåÓıµÈ·½ÃæµÄĞÂÎÅ±¨µÀºÍÆÀÂÛ¡£ÍøÕ¾ÄÚÈİº­¸ÇÎ÷°²ÊĞµÄ¸÷¸öÇøÏØ¡¢¸÷¸öÁìÓò¡¢¸÷¸öÊ±ÆÚµÄĞÂÎÅ£¬ÒÔ¼°Î÷°²ÊĞµÄÌØÉ«»î¶¯¡¢ÌØÉ«²úÆ·¡¢ÌØÉ«·ç, title: Î÷°²-Î÷°²Íø - xiancity.cn, link: http://news.xiancity.cn/xian/index.shtml], [snippet: 1ÔÂ26ÈÕÉÏÎç£¬±¸ÊÜ¹Ø×¢µÄÉÂÎ÷Ê¡µÚÊ®ËÄ½ìÈËÃñ´ú±í´ó»áµÚ¶ş´Î»áÒéÔÚÎ÷°²Â¡ÖØ¿ªÄ»¡£ 500¶àÃûÊ¡ÈË´ó Ê¡Î¯³£Î¯»á£¨À©´ó£©»áÒéÇ¿µ÷ ÒÔ¸ü¸ßÕ¾Î»¸üÊµ¾Ù´ë¸üÑÏ 2024-01-26 02:15 ÏÖ³¡ | ÉÂÎ÷Ê¡Ê®ËÄ½ìÈË´ó¶ş´Î»áÒéÔÚÎ÷°²¿ªÄ» 2024-01-26 02:00 1ÔÂ26ÈÕÉÏÎç£¬ÉÂÎ÷Ê¡Ê®ËÄ½ìÈË´ó¶ş´Î»áÒéÔÚÎ÷°²¿ªÄ»£¬»áÆÚ4Ìì¡£ »áÒéÆÚ¼ä£¬À´×ÔÈ«Ê¡10¸öÉèÇøµÄÊĞºÍ×¤ÉÂ²¿¶Ó¹²11¸ö´ú±íÍÅµÄ500¶àÃûÊ¡ÈË´ó´ú±í£¬ ÏÂÒ»Ò³ µÚ 1 / 1176 Ò³ µ½µÚ Ò³ È·¶¨, title: ÉÂÎ÷-Î÷°²Íø, link: https://news.xiancity.cn/shanxi/index.shtml], [snippet: Î÷°²ĞÂÎÅ »ªÉÌÍø-»ªÉÌ±¨ 2024-02-21 07:27:47 »ªÉÌ±¨Ñ¶ (¼ÇÕß Ìïî£)2ÔÂ20ÈÕ£¬Î÷°²ÊĞÎ¯ÊĞÕş¸®ÕÙ¿ª2024ÄêÈ«ÊĞ"°Ë¸öĞÂÍ»ÆÆ"ÖØµã¹¤×÷¶¯Ô±²¿Êğ»áÒé£¬ÉîÈëÑ§Ï°¹á³¹µ³µÄ¶şÊ®´óºÍÏ°½üÆ½×ÜÊé¼ÇÀú´ÎÀ´ÉÂ¿¼²ìÖØÒª½²»°ÖØÒªÖ¸Ê¾¾«Éñ£¬È«ÃæÂäÊµÊ¡Î¯Ê¡Õş¸®¹¤×÷ÒªÇó£¬½øÒ»²½¶¯Ô±È«ÊĞÉÏÏÂÕñ·Ü¾«Éñ¡¢ÍçÇ¿Æ´²«£¬´´ĞÂÍÆ½øÖĞ¹úÊ½ÏÖ´ú»¯Î÷°²Êµ¼ùÈ¡µÃĞÂÆøÏóĞÂ³ÉĞ§£¬ÔÚ·ÜÁ¦Æ×Ğ´ÖĞ¹úÊ½ÏÖ´ú»¯½¨ÉèµÄÉÂÎ÷ĞÂÆªÕÂÖĞÓÂµ±ÏÈĞĞÊ¾·¶¡£ Ê¡Î¯³£Î¯¡¢Î÷°²ÊĞÎ¯Êé¼Ç·½ºìÎÀ½²»°£¬Î÷°²ÊĞ³¤Ò¶Å£Æ½Ö÷³Ö£¬Î÷°²ÊĞÈË´ó³£Î¯»áÖ÷ÈÎº«ËÉ¡¢ÊĞÕşĞ­Ö÷Ï¯Íõ¼ªµÂ¡¢ÊĞÎ¯¸±Êé¼ÇÀîæº³öÏ¯»áÒé¡£ »áÉÏ£¬Ó¡·¢ÁË¡¶2024ÄêÈ«ÊĞ"°Ë¸öĞÂÍ»ÆÆ"ÊµÊ©·½°¸¡·¡¶2024ÄêÈ«ÊĞ"°Ë¸öĞÂÍ»ÆÆ"×¥ÂäÊµ·½°¸¡·£¬¸÷×¨ÏîÍÆ½ø×é×é³¤·Ö±ğ×÷±íÌ¬·¢ÑÔ¡£, title: Î÷°²ÕÙ¿ª°Ë¸öĞÂÍ»ÆÆÖØµã¹¤×÷¶¯Ô±²¿Êğ»áÒé-Î÷°²ĞÂÎÅ»ªÉÌÍøĞÂÎÅ, link: https://news.hsw.cn/system/2024/0221/1719729.shtml], [snippet: 01. ¡¶Î÷°²ÊĞÒÔÖÆÔìÒµÎªÖØµã. À©´óÀûÓÃÍâ×ÊÈô¸É´ëÊ©¡·. Õâ¸öÎÄ¼ş´Ó¹ÄÀøÖÆÔìÒµÍ¶×Ê¡¢ÓÅ»¯Íâ×Ê½á¹¹¡¢¼ÓÇ¿Íâ»ã½ğÈÚ·şÎñ¡¢ÌáÉıÍâ×ÊÓªÉÌ»·¾³µÈ·½ÃæÌá³ö10Ìõ¾ßÌå¾Ù´ë£¬ÖØÔÚ¶ÔÖÆÔìÒµÍâ×ÊµÄÕş²ßÖ§³Ö£¬Òıµ¼Íâ×ÊÉèÁ¢ÑĞ·¢ÖĞĞÄ¡¢ÇøÓò×Ü²¿¡¢´òÔìÏà¹Ø²úÒµÁ´¼¯Èº£¬¹ÄÀø ..., title: ÍÆ¶¯¶ÔÍâ¿ª·Å£¬Î÷°²³öÌ¨ÕâĞ©´ëÊ©¡úÅìÅÈºÅ¡¤ÕşÎñ_ÅìÅÈĞÂÎÅ-The Paper, link: https://www.thepaper.cn/newsDetail_forward_25893217]]'
-def len_str2list(result):
-    # result=result.replace("None","").replace(" ","")
-    try:
-        # ³¢ÊÔÊ¹ÓÃ ast.literal_eval ½âÎö×Ö·û´®
-        result = ast.literal_eval(result)
-        # ¼ì²é½âÎö½á¹ûÊÇ·ñÎªÁĞ±í
-        print("list")
-        return len(result)
-    except Exception as e:
-        # Èç¹û½âÎöÊ±·¢Éú´íÎó£¬ËµÃ÷×Ö·û´®²»ÊÇÓĞĞ§µÄÁĞ±í×Ö·û´®
-        print(e)
-        try:
-            dict_result=json.loads(result)
-            return len(dict_result)
-        except:
+app = Flask(__name__)
 
-            return len(result)
-print(len_str2list(a))
+
+@app.route('/')
+def index():
+    start_coords = (46.9540700, 142.7360300)
+    folium_map = folium.Map(location=start_coords, zoom_start=14)
+
+    # ç”¨äºè·Ÿè¸ªtooltipä¿¡æ¯çš„åˆ—è¡¨
+    tooltips_info = []
+
+    # æ·»åŠ ç¬¬ä¸€ä¸ªmarkerå’Œtooltip
+    folium.Marker([46.9540700, 142.7360300],
+                  tooltip='Tooltip ç±»å‹A',
+                  popup='Popup A').add_to(folium_map)
+    tooltips_info.append('ç±»å‹A')
+
+    # æ·»åŠ ç¬¬äºŒä¸ªmarkerå’Œtooltip
+    folium.Marker([46.9580700, 142.7360300],
+                  tooltip='Tooltip ç±»å‹B',
+                  popup='Popup B').add_to(folium_map)
+    tooltips_info.append('ç±»å‹B')
+
+    # ç¡®ä¿æ²¡æœ‰é‡å¤çš„tooltipç±»å‹
+    unique_tooltips = list(set(tooltips_info))
+
+    map_html = folium_map._repr_html_()
+
+    # ä¼ é€’åœ°å›¾HTMLå’Œtooltipç±»å‹ä¿¡æ¯ç»™æ¨¡æ¿
+    return render_template("index2.html", map_html=map_html, tooltips=unique_tooltips)
+
+
+if __name__ == '__main__':
+    app.run(debug=True)
