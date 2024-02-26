@@ -8,10 +8,6 @@ flask_session
 pandas
 xlrd
 matplotlib
-beautifulsoup
-xml
-opencv
-csv
 python-docx
 user_agents
 eventlet

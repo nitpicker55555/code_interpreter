@@ -10,10 +10,10 @@ from openai import OpenAI
 import os
 from dotenv import load_dotenv
 import ast
-from langchain.tools import DuckDuckGoSearchResults
+from langchain_community.tools import DuckDuckGoSearchResults
 from user_agents import parse
 import requests
-
+# import logging
 load_dotenv()
 api_key = os.getenv('OPENAI_API_KEY')
 client = OpenAI()
@@ -24,7 +24,7 @@ from flask_socketio import SocketIO, emit
 output = StringIO()
 original_stdout = sys.stdout
 app = Flask(__name__)
-
+# app.logger.setLevel(logging.WARNING)
 app.secret_key = 'secret_key' # 用于启用 flash() 方法发送消息
 
 # 示例的 Markdown 文本（包含图片链接）
@@ -141,6 +141,15 @@ def search_internet(news):
 
     loop.run_until_complete(async_task())
     loop.close()
+# async def async_task(news):
+#     # 你的异步代码
+#     print(search.run(news))
+#
+# def search_internet(news):
+#     # 使用 eventlet 来 "模拟" 异步操作
+#     pool = eventlet.GreenPool()
+#     pool.spawn(async_task,news)
+#     pool.waitall()
 def complete_json(input_stream):
     """
     尝试补全一个不完整的JSON字符串，包括双引号和括号。
@@ -597,4 +606,4 @@ except:
 
 
 if __name__ == '__main__':
-    socketio.run(app, debug=True, allow_unsafe_werkzeug=True,host='0.0.0.0')
+    socketio.run(app, debug=True, allow_unsafe_werkzeug=True,port=8000,host='0.0.0.0')
